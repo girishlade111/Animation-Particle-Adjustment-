@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>एडजस्टेबल क्रिएटिव पार्टिकल एनीमेशन (कोलैप्सिबल)</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #020410;
+            color: #eee;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        canvas {
+            display: block;
+            cursor: crosshair;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+
+        #controls {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            background-color: rgba(0, 0, 0, 0.7); /* थोड़ा ज़्यादा ओपेक */
+            padding: 10px 15px; /* पैडिंग थोड़ी कम */
+            border-radius: 6px;
+            z-index: 10;
+            max-width: 250px; /* चौड़ाई कम */
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+            /* स्मूथ कोलैप्स/एक्सपैंड के लिए */
+            max-height: calc(100vh - 30px); /* अधिकतम ऊंचाई */
+            overflow: hidden; /* छिपे हुए कंटेंट को काटें */
+            transition: max-height 0.4s ease-in-out, padding 0.4s ease-in-out;
+        }
+
+        #controlsHeader {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px; /* कंटेंट से पहले स्पेस */
+            cursor: default; /* हेडर पर डिफ़ॉल्ट कर्सर */
+        }
+
+        #controlsHeader h3 {
+            margin: 0;
+            color: #00bbf9;
+            font-size: 15px; /* थोड़ा छोटा */
+            border: none;
+            padding: 0;
+        }
+
+        #toggleControlsBtn {
+            padding: 2px 8px;
+            font-size: 12px;
+            background-color: #444;
+            color: #eee;
+            border: 1px solid #666;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-left: 10px; /* हेडिंग से थोड़ा दूर */
+            transition: background-color 0.2s;
+        }
+        #toggleControlsBtn:hover {
+            background-color: #555;
+        }
+
+        /* जब पैनल कोलैप्स हो */
+        #controls.collapsed {
+            max-height: 35px; /* केवल हेडर और बटन दिखाने लायक ऊंचाई */
+            padding-top: 6px;
+            padding-bottom: 6px;
+        }
+        #controls.collapsed #controlsContent {
+             /* max-height ट्रांजिशन के कारण कंटेंट अपने आप छिप जाएगा */
+             /* display: none; // इसकी ज़रूरत नहीं है */
+        }
+         /* वैकल्पिक: कोलैप्स होने पर हेडर का मार्जिन हटाएं */
+        #controls.collapsed #controlsHeader {
+             margin-bottom: 0;
+         }
+
+
+        #controlsContent {
+             max-height: calc(100vh - 80px); /* कंटेंट के लिए अधिकतम ऊंचाई */
+             overflow-y: auto; /* कंटेंट ज़्यादा हो तो स्क्रॉल करें */
+             padding-right: 5px; /* स्क्रॉलबार के लिए थोड़ी जगह */
+        }
+
+
+        .control-group {
+            margin-bottom: 10px; /* ग्रुप के बीच थोड़ी कम जगह */
+        }
+        /* बाकी स्टाइल पहले जैसे ही रखें */
+        .control-group label { display: block; margin-bottom: 4px; font-size: 12px; color: #ccc; }
+        .control-group input[type="range"], .control-group select { width: 100%; cursor: pointer; height: 18px;}
+        .control-group input[type="checkbox"] { margin-right: 5px; vertical-align: middle; }
+        .control-group span { font-size: 11px; color: #aaa; float: right; }
+
+         /* स्क्रॉलबार स्टाइल (controlsContent के लिए) */
+         #controlsContent::-webkit-scrollbar { width: 5px; }
+         #controlsContent::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.1); border-radius: 3px;}
+         #controlsContent::-webkit-scrollbar-thumb { background-color: #555; border-radius: 3px;}
+         #controlsContent::-webkit-scrollbar-thumb:hover { background-color: #777;}
+
+    </style>
+</head>
+<body>
+    <canvas id="particleCanvas"></canvas>
+
+    <div id="controls">
+         {/* --- हेडर और टॉगल बटन --- */}
+        <div id="controlsHeader">
+            <h3>एनीमेशन कंट्रोल्स</h3>
+            <button id="toggleControlsBtn">[-] Hide</button>
+        </div>
+
+         {/* --- कंट्रोल कंटेंट रैपर --- */}
+        <div id="controlsContent">
+            <div class="control-group">
+                <label for="numParticles">कणों की संख्या: <span id="numParticlesValue">100</span></label>
+                <input type="range" id="numParticles" min="10" max="500" value="100">
+            </div>
+
+            <div class="control-group">
+                <label for="baseSpeed">मूल गति: <span id="baseSpeedValue">1.0</span></label>
+                <input type="range" id="baseSpeed" min="0.1" max="3.0" step="0.1" value="1.0">
+            </div>
+
+            <div class="control-group">
+                <label style="margin-bottom: 6px;">सेटिंग्स:</label>
+                <label style="display: inline-block; margin-right: 15px;">
+                    <input type="checkbox" id="pulsation" checked> पल्सेशन
+                </label>
+                <label style="display: inline-block;">
+                    <input type="checkbox" id="connections" checked> रेखाएँ
+                </label>
+            </div>
+
+            <div class="control-group" id="connectionDistGroup">
+                <label for="connectionDist">कनेक्शन दूरी: <span id="connectionDistValue">80</span></label>
+                <input type="range" id="connectionDist" min="10" max="200" value="80">
+            </div>
+
+            <div class="control-group">
+                <label for="mouseRadius">माउस दायरा: <span id="mouseRadiusValue">70</span></label>
+                <input type="range" id="mouseRadius" min="10" max="250" value="70">
+            </div>
+
+            <div class="control-group">
+                <label for="mouseMode">माउस इंटरेक्शन:</label>
+                <select id="mouseMode">
+                    <option value="repel" selected>दूर धकेलें</option>
+                    <option value="attract">खींचें</option>
+                    <option value="none">कोई नहीं</option>
+                </select>
+            </div>
+
+            <div class="control-group">
+                <label for="edgeBehavior">किनारे का व्यवहार:</label>
+                <select id="edgeBehavior">
+                    <option value="bounce" selected>बाउंस</option>
+                    <option value="fade">फीका/रिस्पॉन</option>
+                </select>
+            </div>
+
+            <div class="control-group">
+                <label for="trailIntensity">ट्रेल इफ़ेक्ट: <span id="trailIntensityValue">0.10</span></label>
+                <input type="range" id="trailIntensity" min="0.01" max="0.5" step="0.01" value="0.1">
+            </div>
+        </div> {/* --- controlsContent बंद --- */}
+    </div> {/* --- controls बंद --- */}
+
+    <script>
+        const canvas = document.getElementById('particleCanvas');
+        const ctx = canvas.getContext('2d');
+
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        // --- कंट्रोल एलिमेंट्स ---
+        const controlsPanel = document.getElementById('controls'); // मुख्य पैनल
+        const toggleBtn = document.getElementById('toggleControlsBtn'); // टॉगल बटन
+        const controlsContent = document.getElementById('controlsContent'); // कंटेंट रैपर
+
+        const numParticlesSlider = document.getElementById('numParticles');
+        const numParticlesValueSpan = document.getElementById('numParticlesValue');
+        // ... (बाकी सारे कंट्रोल एलिमेंट्स पहले जैसे ही)
+        const baseSpeedSlider = document.getElementById('baseSpeed');
+        const baseSpeedValueSpan = document.getElementById('baseSpeedValue');
+        const pulsationCheckbox = document.getElementById('pulsation');
+        const connectionsCheckbox = document.getElementById('connections');
+        const connectionDistSlider = document.getElementById('connectionDist');
+        const connectionDistValueSpan = document.getElementById('connectionDistValue');
+        const connectionDistGroup = document.getElementById('connectionDistGroup');
+        const mouseRadiusSlider = document.getElementById('mouseRadius');
+        const mouseRadiusValueSpan = document.getElementById('mouseRadiusValue');
+        const mouseModeSelect = document.getElementById('mouseMode');
+        const edgeBehaviorSelect = document.getElementById('edgeBehavior');
+        const trailIntensitySlider = document.getElementById('trailIntensity');
+        const trailIntensityValueSpan = document.getElementById('trailIntensityValue');
+
+        // --- एनीमेशन पैरामीटर्स (config ऑब्जेक्ट पहले जैसा ही) ---
+        let particlesArray = [];
+        let config = {
+            numberOfParticles: parseInt(numParticlesSlider.value),
+            baseSpeed: parseFloat(baseSpeedSlider.value),
+            enablePulsation: pulsationCheckbox.checked,
+            enableConnections: connectionsCheckbox.checked,
+            connectionDistance: parseInt(connectionDistSlider.value),
+            mouseRadius: parseInt(mouseRadiusSlider.value),
+            mouseMode: mouseModeSelect.value,
+            edgeBehavior: edgeBehaviorSelect.value,
+            trailAlpha: parseFloat(trailIntensitySlider.value),
+            baseParticleSize: 1.8,
+            maxParticleLife: 200
+        };
+
+        const mouse = { x: null, y: null };
+        const colorPalette = [ '#00f5d4', '#00bbf9', '#9b5de5', '#f15bb5', '#fee440', '#ff6b6b', '#ffffff' ];
+
+        // --- इवेंट लिस्नर (माउस/टच - पहले जैसे ही) ---
+        window.addEventListener('mousemove', (event) => { mouse.x = event.clientX; mouse.y = event.clientY; });
+        window.addEventListener('mouseout', () => { mouse.x = null; mouse.y = null; });
+        window.addEventListener('touchmove', (event) => {
+             if (event.touches.length > 0) { mouse.x = event.touches[0].clientX; mouse.y = event.clientY; }
+         }, { passive: true });
+         window.addEventListener('touchend', () => { mouse.x = null; mouse.y = null; });
+
+
+        // --- कंट्रोल इवेंट लिस्नर (पहले जैसे ही, मान अपडेट करने के लिए) ---
+        numParticlesSlider.addEventListener('input', (e) => {
+            config.numberOfParticles = parseInt(e.target.value);
+            numParticlesValueSpan.textContent = config.numberOfParticles;
+            init();
+        });
+         baseSpeedSlider.addEventListener('input', (e) => {
+            config.baseSpeed = parseFloat(e.target.value);
+            baseSpeedValueSpan.textContent = config.baseSpeed.toFixed(1);
+        });
+        pulsationCheckbox.addEventListener('change', (e) => { config.enablePulsation = e.target.checked; });
+        connectionsCheckbox.addEventListener('change', (e) => {
+             config.enableConnections = e.target.checked;
+             connectionDistGroup.style.display = config.enableConnections ? 'block' : 'none';
+         });
+         // ... (बाकी कंट्रोल लिस्नर पहले जैसे ही) ...
+         connectionDistSlider.addEventListener('input', (e) => {
+            config.connectionDistance = parseInt(e.target.value);
+            connectionDistValueSpan.textContent = config.connectionDistance;
+        });
+        mouseRadiusSlider.addEventListener('input', (e) => {
+            config.mouseRadius = parseInt(e.target.value);
+            mouseRadiusValueSpan.textContent = config.mouseRadius;
+        });
+        mouseModeSelect.addEventListener('change', (e) => { config.mouseMode = e.target.value; });
+        edgeBehaviorSelect.addEventListener('change', (e) => { config.edgeBehavior = e.target.value; });
+        trailIntensitySlider.addEventListener('input', (e) => {
+            config.trailAlpha = parseFloat(e.target.value);
+            trailIntensityValueSpan.textContent = config.trailAlpha.toFixed(2);
+        });
+
+
+        // शुरुआत में कनेक्शन दूरी ग्रुप को सही स्थिति में सेट करें
+        connectionDistGroup.style.display = config.enableConnections ? 'block' : 'none';
+
+        // --- टॉगल बटन लिस्नर ---
+        toggleBtn.addEventListener('click', () => {
+            controlsPanel.classList.toggle('collapsed');
+
+            // बटन टेक्स्ट अपडेट करें
+            if (controlsPanel.classList.contains('collapsed')) {
+                toggleBtn.textContent = '[+] Show';
+                 // कोलैप्स होने पर कंटेंट से फोकस हटाएं (यदि ज़रूरी हो)
+                controlsContent.blur();
+            } else {
+                toggleBtn.textContent = '[-] Hide';
+            }
+        });
+
+
+        // --- पार्टिकल क्लास (पहले जैसा ही) ---
+        class Particle {
+             // ... (पूरा क्लास कोड यहाँ पहले जैसा ही रहेगा) ...
+            constructor(x, y) { this.reset(x, y); }
+            reset(x = null, y = null) {
+                this.x = x !== null ? x : Math.random() * canvas.width;
+                this.y = y !== null ? y : Math.random() * canvas.height;
+                this.size = Math.random() * 1.5 + config.baseParticleSize - 0.5;
+                this.baseSize = this.size;
+                const angle = Math.random() * Math.PI * 2;
+                const speed = (Math.random() * 0.8 + 0.2) * config.baseSpeed;
+                this.speedX = Math.cos(angle) * speed;
+                this.speedY = Math.sin(angle) * speed;
+                this.color = Math.random() < 0.05 ? '#ffffff' : colorPalette[Math.floor(Math.random() * (colorPalette.length -1))];
+                this.density = (Math.random() * 15) + 5;
+                this.pulseAngle = Math.random() * Math.PI * 2;
+                this.pulseSpeed = (Math.random() * 0.04) + 0.01;
+                this.pulseAmount = Math.random() * 0.6 + 0.1;
+                this.life = config.maxParticleLife;
+                this.isFading = false;
+            }
+             draw() {
+                let currentSize = this.baseSize;
+                if (config.enablePulsation) {
+                    const currentPulse = Math.sin(this.pulseAngle) * this.pulseAmount;
+                    currentSize = Math.max(0.1, this.baseSize + currentPulse);
+                }
+                let alpha = 1;
+                if (config.edgeBehavior === 'fade' && this.isFading) {
+                    alpha = Math.max(0, this.life / (config.maxParticleLife * 0.5));
+                }
+                ctx.save();
+                ctx.globalAlpha = alpha;
+                ctx.fillStyle = this.color;
+                ctx.shadowColor = this.color;
+                ctx.shadowBlur = 3;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, currentSize, 0, Math.PI * 2);
+                ctx.closePath();
+                ctx.fill();
+                ctx.restore();
+             }
+            update() {
+                if (config.enablePulsation) {
+                    this.pulseAngle += this.pulseSpeed;
+                    if (this.pulseAngle > Math.PI * 2) this.pulseAngle -= Math.PI * 2;
+                }
+                if (config.mouseMode !== 'none' && mouse.x !== null) {
+                    let dxMouse = mouse.x - this.x;
+                    let dyMouse = mouse.y - this.y;
+                    let distMouse = Math.sqrt(dxMouse * dxMouse + dyMouse * dyMouse);
+                    if (distMouse < config.mouseRadius) {
+                        let forceMouse = (config.mouseRadius - distMouse) / config.mouseRadius;
+                        let moveX = dxMouse / distMouse * forceMouse * this.density * 0.3;
+                        let moveY = dyMouse / distMouse * forceMouse * this.density * 0.3;
+                        if (config.mouseMode === 'repel') { this.x -= moveX; this.y -= moveY; }
+                        else if (config.mouseMode === 'attract') { this.x += moveX; this.y += moveY; }
+                    }
+                }
+                this.x += this.speedX;
+                this.y += this.speedY;
+                if (config.edgeBehavior === 'bounce') {
+                     if (this.x + this.size > canvas.width || this.x - this.size < 0) {
+                        this.speedX *= -1;
+                        this.x = Math.max(this.size, Math.min(canvas.width - this.size, this.x));
+                    }
+                    if (this.y + this.size > canvas.height || this.y - this.size < 0) {
+                        this.speedY *= -1;
+                        this.y = Math.max(this.size, Math.min(canvas.height - this.size, this.y));
+                    }
+                } else if (config.edgeBehavior === 'fade') {
+                    this.life--;
+                     if (!this.isFading && (this.x < -this.size * 2 || this.x > canvas.width + this.size * 2 || this.y < -this.size * 2 || this.y > canvas.height + this.size * 2 || this.life <= 0) ) {
+                        this.isFading = true;
+                        this.life = Math.min(this.life, config.maxParticleLife * 0.5);
+                     }
+                     if (this.isFading && this.life <= 0) { this.reset(); }
+                }
+            }
+        }
+
+        // --- हेल्पर फ़ंक्शंस (init, connectParticles - पहले जैसे ही) ---
+        function init() {
+            particlesArray = [];
+            const particleCount = config.numberOfParticles;
+            for (let i = 0; i < particleCount; i++) {
+                particlesArray.push(new Particle());
+            }
+        }
+        function connectParticles() {
+            const connectDist = config.connectionDistance;
+            const minOpacity = 0.02;
+            ctx.lineWidth = 0.6;
+            ctx.strokeStyle = `rgba(180, 180, 255, 0.5)`;
+            for (let a = 0; a < particlesArray.length; a++) {
+                 if (config.edgeBehavior === 'fade' && particlesArray[a].isFading) continue;
+                for (let b = a + 1; b < particlesArray.length; b++) {
+                    if (config.edgeBehavior === 'fade' && particlesArray[b].isFading) continue;
+                    let dx = particlesArray[a].x - particlesArray[b].x;
+                    let dy = particlesArray[a].y - particlesArray[b].y;
+                    let distance = Math.sqrt(dx * dx + dy * dy);
+                    if (distance < connectDist) {
+                        let opacityValue = Math.max(minOpacity, 1 - (distance / connectDist));
+                        ctx.strokeStyle = `rgba(180, 180, 255, ${opacityValue * 0.5})`;
+                        ctx.beginPath();
+                        ctx.moveTo(particlesArray[a].x, particlesArray[a].y);
+                        ctx.lineTo(particlesArray[b].x, particlesArray[b].y);
+                        ctx.stroke();
+                    }
+                }
+            }
+        }
+
+
+        // --- एनीमेशन लूप (पहले जैसा ही) ---
+        function animate() {
+            ctx.fillStyle = `rgba(2, 4, 16, ${config.trailAlpha})`;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            for (let i = particlesArray.length - 1; i >= 0; i--) {
+                 particlesArray[i].update();
+                 particlesArray[i].draw();
+             }
+            if (config.enableConnections && particlesArray.length > 1) {
+                 connectParticles();
+            }
+            ctx.shadowBlur = 0;
+            requestAnimationFrame(animate);
+        }
+
+        // --- इनिशियलाइज़ेशन और रीसाइज़ (पहले जैसा ही) ---
+        init();
+        animate();
+
+        let resizeTimer;
+        window.addEventListener('resize', () => {
+            clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(() => {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+                mouse.x = null; mouse.y = null;
+                init();
+            }, 150);
+        });
+
+    </script>
+</body>
+</html>
